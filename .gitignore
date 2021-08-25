@@ -1,0 +1,5 @@
+BUILD
+.mbed
+COMPONENT_wifi_ism43362
+mbed-client-for-azure
+mbed-os
