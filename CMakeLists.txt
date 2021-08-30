@@ -12,6 +12,14 @@ include(${MBED_PATH}/tools/cmake/app.cmake)
 add_subdirectory(${MBED_PATH})
 add_subdirectory(mbed-client-for-azure)
 add_subdirectory(ntp-client)
+add_subdirectory(${MODEL_FOLDER}/edge-impulse-sdk/cmake/zephyr)
+
+target_include_directories(app PRIVATE
+    ${MODEL_FOLDER}
+    ${MODEL_FOLDER}/tflite-model
+    ${MODEL_FOLDER}/model-parameters
+)
+include_directories(${INCLUDES})
 
 if("wifi_ism43362" IN_LIST MBED_TARGET_LABELS)
     add_subdirectory(drivers/COMPONENT_wifi_ism43362)
@@ -51,6 +59,10 @@ target_link_libraries(${APP_TARGET}
 )
 
 mbed_set_post_build(${APP_TARGET})
+
+# find model source files
+RECURSIVE_FIND_FILE(MODEL_FILES "${MODEL_FOLDER}/tflite-model" "*.cpp")
+list(APPEND SOURCE_FILES ${MODEL_FILES})
 
 option(VERBOSE_BUILD "Have a verbose build process")
 if(VERBOSE_BUILD)

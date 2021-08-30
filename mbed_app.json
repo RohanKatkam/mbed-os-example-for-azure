@@ -13,7 +13,8 @@
             "target.network-default-interface-type": "WIFI",
             "nsapi.default-wifi-security": "WPA_WPA2",
             "nsapi.default-wifi-ssid": "\"Laevo\"",
-            "nsapi.default-wifi-password": "\"Laevo007!\""
+            "nsapi.default-wifi-password": "\"Laevo007!\"",
+            "target.printf_lib": "std" 
         }
     }
 }

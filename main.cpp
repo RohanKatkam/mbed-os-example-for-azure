@@ -20,10 +20,32 @@
 #include "iothubtransportmqtt.h"
 #include "azure_cloud_credentials.h"
 
+#include "../LSM6DSL/LSM6DSL_acc_gyro_driver.h"
+#include "../LSM6DSL/LSM6DSLSensor.h"
+#include "ei_run_classifier.h"
+#include "model-parameters/model_metadata.h"
+#include <cstring>
+
+// Set the sampling frequency in Hz
+static int16_t sampling_freq = 101;
+static int64_t time_between_samples_us = (1000000 / (sampling_freq - 1));
+
+static float features[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
+
+// Blinking rate in milliseconds
+#define BLINKING_RATE    500ms
+#define BUSY_LOOP_DURATON 9ms
+
 /**
  * This example sends and receives messages to and from Azure IoT Hub.
  * The API usages are based on Azure SDK's official iothub_convenience_sample.
  */
+
+ // Check if this checks out for B-L4S5I board
+static DevI2C devI2C(PB_11, PB_10);
+// Acc and Gyro Class Object
+static LSM6DSLSensor acc_gyro(&devI2C, LSM6DSL_ACC_GYRO_I2C_ADDRESS_LOW);
+
 
 // Global symbol referenced by the Azure SDK's port for Mbed OS, via "extern"
 NetworkInterface *_defaultSystemNetwork;
@@ -70,6 +92,22 @@ IOTHUB_DEVICE_CLIENT_HANDLE client_handle;
 IOTHUB_CLIENT_RESULT res;
 tickcounter_ms_t interval = 100;
 void demo() {
+    // Machine Learning Setup
+    void *init;
+
+    int32_t acc_val_buf[3] = {0};
+    int32_t gyro_val_buf[3] = {0};
+    // init initializes the component
+    acc_gyro.init(init);
+    // enables the accelero
+    acc_gyro.enable_x();
+    // enable gyro
+    acc_gyro.enable_g();
+
+    // int y = bar(20);
+    Timer t;
+    t.start();
+
     bool trace_on = MBED_CONF_APP_IOTHUB_CLIENT_TRACE;
     // tickcounter_ms_t interval = 100;
     // IOTHUB_CLIENT_RESULT res;
@@ -120,51 +158,104 @@ void demo() {
         LogError("Failed to set connection status callback, error: %d", res);
         goto cleanup;
     }
-    while(true) {
 
+    while(true) {
         // Do machine learning
-        
+        for (size_t ix = 0; ix < EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE; ix += EI_CLASSIFIER_RAW_SAMPLES_PER_FRAME) {
+            int64_t next_tick = t.read_us() + time_between_samples_us;
+            // printf("gyro enable val: %d\n", check_ena_g);
+            acc_gyro.get_x_axes(acc_val_buf);
+            acc_gyro.get_g_axes(gyro_val_buf);
+
+            features[ix + 0] = static_cast<float>(acc_val_buf[0]) / 100.0f;
+            features[ix + 1] = static_cast<float>(acc_val_buf[1]) / 100.0f;
+            features[ix + 2] = static_cast<float>(acc_val_buf[2]) / 100.0f;
+            features[ix + 3] = static_cast<float>(gyro_val_buf[0]) / 1000.0f;
+            features[ix + 4] = static_cast<float>(gyro_val_buf[1]) / 1000.0f;
+            features[ix + 5] = static_cast<float>(gyro_val_buf[2]) / 1000.0f;
+            while (t.read_us() < next_tick){
+                // busy loop
+            }
+        }
+
+        ei_impulse_result_t result = {0};
+
+        signal_t signal;
+
+        numpy::signal_from_buffer(features, EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE, &signal);
+
+        // run classifier
+        EI_IMPULSE_ERROR ei_res = run_classifier(&signal, &result, false);
+        ei_printf("run_classifier returned: %d\n", ei_res);
+        // if (res != 0) return 1;
+
+        // print predictions
+        ei_printf("Predictions (DSP: %d ms., Classification: %d ms., Anomaly: %d ms.): \n",
+            result.timing.dsp, result.timing.classification, result.timing.anomaly);
+
+        int largest_index_val = 0;
+        int largest_val = 0.f;
+        // print the predictions
+        for (size_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+            if (static_cast<int>(result.classification[ix].value*100) > largest_val)
+            {
+                largest_val = static_cast<int>(result.classification[ix].value*100);
+                largest_index_val = ix;
+            }
+            ei_printf("%s:\t%.5f\n", result.classification[ix].label, result.classification[ix].value);
+        }
+        #if EI_CLASSIFIER_HAS_ANOMALY == 1
+            ei_printf("anomaly:\t%.3f\n", result.anomaly);
+        #endif
 
         if (count_for_loop > 1000){
             count_for_loop = 0;
         }
-        // Send ten message to the cloud (one per second)
-        // or until we receive a message from the cloud
+
+
         IOTHUB_MESSAGE_HANDLE message_handle;
         char message[80];
-        // for (int i = 0; i < 10; ++i) {
-            // if (message_received) {
-                // If we have received a message from the cloud, don't send more messeges
-                // break;
-            // }
+        int DeviceID = 1583;               // Device Identifier
+        char NN_State[20] = "LOL";       // User state (Stoop, Walk, Stand, Squat, Unused)
+        int Duration = 400;             // Duration of state [ms] 
 
-            sprintf(message, "%d messages left to send, or until we receive a reply", count_for_loop++);
-            LogInfo("Sending: \"%s\"", message);
+        switch (largest_index_val) {
+            case 0: strcpy(NN_State, "Squat");
+                    break;
+            case 1: strcpy(NN_State, "Stand");
+                    break;
+            case 2: strcpy(NN_State, "Stoop");
+                    break;
+            case 3: strcpy(NN_State, "Walk");
+                    break;
+            default: strcpy(NN_State, "Anomaly");
+                    break;
+        }
 
-            message_handle = IoTHubMessage_CreateFromString(message);
-            if (message_handle == nullptr) {
-                LogError("Failed to create message");
-                goto cleanup;
-            }
+        sprintf(message, "{\"DeviceID\":%d,\"State\":\"%s\",\"Duration\":%d}", DeviceID, NN_State, Duration);
 
-            res = IoTHubDeviceClient_SendEventAsync(client_handle, message_handle, on_message_sent, nullptr);
-            IoTHubMessage_Destroy(message_handle); // message already copied into the SDK
 
-            if (res != IOTHUB_CLIENT_OK) {
-                LogError("Failed to send message event, error: %d", res);
-                goto cleanup;
-            }
 
-            ThisThread::sleep_for(5s); 
-        // }
+        // sprintf(message, "%d messages left to send, or until we receive a reply", count_for_loop++);
+        // sprintf(message, "ANOMALY IS: %.3f", result.anomaly);
+        LogInfo("Sending: \"%s\"", message);
 
-        // // If the user didn't manage to send a cloud-to-device message earlier,
-        // // let's wait until we receive one
-        // while (!message_received) {
-        //     // Continue to receive messages in the communication thread
-        //     // which is internally created and maintained by the Azure SDK.
-        //     sleep();
-        // }
+        message_handle = IoTHubMessage_CreateFromString(message);
+        if (message_handle == nullptr) {
+            LogError("Failed to create message");
+            goto cleanup;
+        }
+
+        res = IoTHubDeviceClient_SendEventAsync(client_handle, message_handle, on_message_sent, nullptr);
+        IoTHubMessage_Destroy(message_handle); // message already copied into the SDK
+
+        if (res != IOTHUB_CLIENT_OK) {
+            LogError("Failed to send message event, error: %d", res);
+            goto cleanup;
+        }
+
+
+        ThisThread::sleep_for(5s); 
     }
 
 cleanup:
@@ -199,6 +290,8 @@ int main() {
     }
     LogInfo("Time: %s", ctime(&timestamp));
     set_time(timestamp);
+
+
 
     LogInfo("Starting the Demo");
     demo();
