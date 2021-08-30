@@ -65,15 +65,19 @@ static void on_message_sent(IOTHUB_CLIENT_CONFIRMATION_RESULT result, void* user
     }
 }
 
+int count_for_loop = 0;
+IOTHUB_DEVICE_CLIENT_HANDLE client_handle;
+IOTHUB_CLIENT_RESULT res;
+tickcounter_ms_t interval = 100;
 void demo() {
     bool trace_on = MBED_CONF_APP_IOTHUB_CLIENT_TRACE;
-    tickcounter_ms_t interval = 100;
-    IOTHUB_CLIENT_RESULT res;
+    // tickcounter_ms_t interval = 100;
+    // IOTHUB_CLIENT_RESULT res;
 
     LogInfo("Initializing IoT Hub client");
     IoTHub_Init();
 
-    IOTHUB_DEVICE_CLIENT_HANDLE client_handle = IoTHubDeviceClient_CreateFromConnectionString(
+    client_handle = IoTHubDeviceClient_CreateFromConnectionString(
         azure_cloud::credentials::iothub_connection_string,
         MQTT_Protocol
     );
@@ -116,43 +120,51 @@ void demo() {
         LogError("Failed to set connection status callback, error: %d", res);
         goto cleanup;
     }
+    while(true) {
 
-    // Send ten message to the cloud (one per second)
-    // or until we receive a message from the cloud
-    IOTHUB_MESSAGE_HANDLE message_handle;
-    char message[80];
-    for (int i = 0; i < 10; ++i) {
-        if (message_received) {
-            // If we have received a message from the cloud, don't send more messeges
-            break;
+        // Do machine learning
+        
+
+        if (count_for_loop > 1000){
+            count_for_loop = 0;
         }
+        // Send ten message to the cloud (one per second)
+        // or until we receive a message from the cloud
+        IOTHUB_MESSAGE_HANDLE message_handle;
+        char message[80];
+        // for (int i = 0; i < 10; ++i) {
+            // if (message_received) {
+                // If we have received a message from the cloud, don't send more messeges
+                // break;
+            // }
 
-        sprintf(message, "%d messages left to send, or until we receive a reply", 10 - i);
-        LogInfo("Sending: \"%s\"", message);
+            sprintf(message, "%d messages left to send, or until we receive a reply", count_for_loop++);
+            LogInfo("Sending: \"%s\"", message);
 
-        message_handle = IoTHubMessage_CreateFromString(message);
-        if (message_handle == nullptr) {
-            LogError("Failed to create message");
-            goto cleanup;
-        }
+            message_handle = IoTHubMessage_CreateFromString(message);
+            if (message_handle == nullptr) {
+                LogError("Failed to create message");
+                goto cleanup;
+            }
 
-        res = IoTHubDeviceClient_SendEventAsync(client_handle, message_handle, on_message_sent, nullptr);
-        IoTHubMessage_Destroy(message_handle); // message already copied into the SDK
+            res = IoTHubDeviceClient_SendEventAsync(client_handle, message_handle, on_message_sent, nullptr);
+            IoTHubMessage_Destroy(message_handle); // message already copied into the SDK
 
-        if (res != IOTHUB_CLIENT_OK) {
-            LogError("Failed to send message event, error: %d", res);
-            goto cleanup;
-        }
+            if (res != IOTHUB_CLIENT_OK) {
+                LogError("Failed to send message event, error: %d", res);
+                goto cleanup;
+            }
 
-        ThisThread::sleep_for(1s);
-    }
+            ThisThread::sleep_for(5s); 
+        // }
 
-    // If the user didn't manage to send a cloud-to-device message earlier,
-    // let's wait until we receive one
-    while (!message_received) {
-        // Continue to receive messages in the communication thread
-        // which is internally created and maintained by the Azure SDK.
-        sleep();
+        // // If the user didn't manage to send a cloud-to-device message earlier,
+        // // let's wait until we receive one
+        // while (!message_received) {
+        //     // Continue to receive messages in the communication thread
+        //     // which is internally created and maintained by the Azure SDK.
+        //     sleep();
+        // }
     }
 
 cleanup:
@@ -179,7 +191,7 @@ int main() {
     LogInfo("Getting time from the NTP server");
 
     NTPClient ntp(_defaultSystemNetwork);
-    ntp.set_server("time.google.com", 123);
+    ntp.set_server("2.pool.ntp.org", 123);
     time_t timestamp = ntp.get_timestamp();
     if (timestamp < 0) {
         LogError("Failed to get the current time, error: %ld", timestamp);
@@ -191,6 +203,8 @@ int main() {
     LogInfo("Starting the Demo");
     demo();
     LogInfo("The demo has ended");
+
+
 
     return 0;
 }
