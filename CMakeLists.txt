@@ -12,6 +12,9 @@ include(${MBED_PATH}/tools/cmake/app.cmake)
 add_subdirectory(${MBED_PATH})
 add_subdirectory(mbed-client-for-azure)
 add_subdirectory(ntp-client)
+add_subdirectory(STM32_Cellular)
+add_subdirectory(Third_Party/FreeRTOS)
+add_sibdirectory(FreeRTOS)
 add_subdirectory(${MODEL_FOLDER}/edge-impulse-sdk/cmake/zephyr)
 
 target_include_directories(app PRIVATE
@@ -56,6 +59,7 @@ target_link_libraries(${APP_TARGET}
         mbed-os
         ntp-client
         mbed-mbedtls
+	FreeRTOS
 )
 
 mbed_set_post_build(${APP_TARGET})

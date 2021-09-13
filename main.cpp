@@ -2,6 +2,9 @@
  * Copyright (c) 2020 Arm Limited
  * SPDX-License-Identifier: Apache-2.0
  */
+// #include "cellular_app.h"
+
+#include "cellular_service_power.h"
 
 #include "mbed.h"
 #include "rtos/ThisThread.h"
@@ -36,6 +39,7 @@ static float features[EI_CLASSIFIER_DSP_INPUT_FRAME_SIZE];
 #define BLINKING_RATE    500ms
 #define BUSY_LOOP_DURATON 9ms
 
+// Serial 
 /**
  * This example sends and receives messages to and from Azure IoT Hub.
  * The API usages are based on Azure SDK's official iothub_convenience_sample.
